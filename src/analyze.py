@@ -1,7 +1,7 @@
 import sqlparse
 
 from re import sub
-from sqlparse.tokens import DML, Keyword, Punctuation
+from sqlparse.tokens import DML, Keyword
 from sqlparse.sql import Identifier, IdentifierList, TokenList, Token
 
 def iter_subqueries(token: Token):
@@ -54,7 +54,7 @@ def analyze_select(statement:sqlparse.sql.Statement):
     }
     from_table = None
     while t is not None:
-        if t.ttype == DML:
+        if t.ttype == DML: # currently, only select is OK
             current_idx, t = statement.token_next(current_idx)
             if isinstance(t, Identifier):
                 table_info["COLUMNS"].append(analyze_identifier(t))
