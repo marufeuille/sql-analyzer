@@ -33,7 +33,7 @@ def analyze_identifier(identifier: Identifier):
     else:
         return {"name": real_name, "from": []}
 
-def analyze_select(statement:sqlparse.sql.Statement, table_definitons:dict=None):
+def analyze_select(statement:sqlparse.sql.Statement, table_definitions:dict=None):
     """Analyze Select Query Statement
 
     Parameters
@@ -79,6 +79,12 @@ def analyze_select(statement:sqlparse.sql.Statement, table_definitons:dict=None)
     print(table_info)
     for c in table_info["COLUMNS"]:
         c["from"].append(from_table)
+        if table_definitions and from_table in table_definitions:
+            key = c["name"]
+            for c_def in table_definitions[from_table]:
+                print(1, c_def)
+                if c_def["name"] == key:
+                    c["type"] = c_def["type"]
 
     asterisk_column = None
     for c in table_info["COLUMNS"]:
@@ -86,7 +92,7 @@ def analyze_select(statement:sqlparse.sql.Statement, table_definitons:dict=None)
             except_columns = c["except"]
             asterisk_column = c
             _from_table = c["from"][0]
-            for definition in table_definitons[_from_table]:
+            for definition in table_definitions[_from_table]:
                 if definition["name"] not in except_columns:
                     table_info["COLUMNS"].append({
                         "name": definition["name"],
