@@ -13,6 +13,14 @@ def iter_subqueries(token: Token):
         yield from iter_subqueries(t)
 
 
+def analyze_identifier(identifier: Identifier):
+    alias = identifier.get_alias()
+    real_name = identifier.get_real_name()
+    if alias:
+        return {"name": alias, "original_name": real_name, "from": []}
+    else:
+        return {"name": real_name, "from": []}
+
 def analyze_select(statement:sqlparse.sql.Statement):
 
     current_idx = 0
@@ -28,18 +36,10 @@ def analyze_select(statement:sqlparse.sql.Statement):
             print(t, t.ttype, isinstance(t, TokenList))
             if (isinstance(t, TokenList)):
                 if isinstance(t, Identifier):
-                    alias = t.get_alias()
-                    if alias:
-                        table_info["COLUMNS"].append({"name": alias, "original_name": t.get_real_name(), "from": []})
-                    else:
-                        table_info["COLUMNS"].append({"name": t.get_real_name(), "from": []})
+                    table_info["COLUMNS"].append(analyze_identifier(t))
                 elif isinstance(t, IdentifierList):
                     for ident in t.get_identifiers():
-                        alias = ident.get_alias()
-                        if alias:
-                            table_info["COLUMNS"].append({"name": alias, "original_name": ident.get_real_name(), "from": []})
-                        else:
-                            table_info["COLUMNS"].append({"name": ident.get_real_name(), "from": []})
+                        table_info["COLUMNS"].append(analyze_identifier(ident))
 
         if t.ttype == Keyword and t.value.lower() == "from":
             current_idx, t = statement.token_next(current_idx)
