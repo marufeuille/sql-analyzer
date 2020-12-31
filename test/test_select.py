@@ -43,3 +43,27 @@ def test_simple_select():
     }
     subqueries = list(iter_subqueries(sqlparse.parse(sql)[0]))
     assert analyze_select(subqueries[0]) == expected, "has alias column"
+
+def test_inference_asterisk():
+    sql = "SELECT * FROM t0"
+    table_definitions = {"t0": [
+        {"name":"x", "type":"INTEGER", "mode": "NULLABLE"},
+        {"name":"y", "type":"INTEGER", "mode": "NULLABLE"},
+    ]}
+    expected = {
+        "COLUMNS": [
+            {
+                "name": "x",
+                "type": "INTEGER",
+                "from": ["t0"]
+            },
+            {
+                "name": "y",
+                "type": "INTEGER",
+                "from": ["t0"]
+            }
+        ]
+    }
+
+    subqueries = list(iter_subqueries(sqlparse.parse(sql)[0]))
+    assert analyze_select(subqueries[0], table_definitons=table_definitions) == expected, "inference from static table definition"
