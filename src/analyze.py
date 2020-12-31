@@ -2,7 +2,7 @@ import sqlparse
 
 from re import sub
 from sqlparse.tokens import DML, Keyword
-from sqlparse.sql import Identifier, IdentifierList, TokenList, Token
+from sqlparse.sql import Function, Identifier, IdentifierList, TokenList, Token
 
 def iter_subqueries(token: Token):
     """https://blog.hoxo-m.com/entry/sqlparse_parse"""
@@ -56,14 +56,20 @@ def analyze_select(statement:sqlparse.sql.Statement, table_definitons:dict=None)
     while t is not None:
         if t.ttype == DML: # currently, only select is OK
             current_idx, t = statement.token_next(current_idx)
-            print(t.__class__)
+            print(t)
             if isinstance(t, Identifier):
                 table_info["COLUMNS"].append(analyze_identifier(t))
             elif isinstance(t, IdentifierList):
                 for ident in t.get_identifiers():
                     table_info["COLUMNS"].append(analyze_identifier(ident))
             elif t.value == "*":
-                table_info["COLUMNS"].append({"name": "*", "from": []})
+                _idx, _t = statement.token_next(current_idx)
+                print(_t, _t.__class__)
+                except_columns = []
+                if isinstance(_t, Function) and _t.get_name().lower() == "except":
+                    for params in _t.get_parameters():
+                        except_columns.append(params.get_name())
+                table_info["COLUMNS"].append({"name": "*", "from": [], "except": except_columns})
 
         elif t.ttype == Keyword and t.value.lower() == "from":
             current_idx, t = statement.token_next(current_idx)
@@ -74,18 +80,20 @@ def analyze_select(statement:sqlparse.sql.Statement, table_definitons:dict=None)
     for c in table_info["COLUMNS"]:
         c["from"].append(from_table)
 
-    asterisk = None
+    asterisk_column = None
     for c in table_info["COLUMNS"]:
         if c["name"] == "*":
-            asterisk = c
+            except_columns = c["except"]
+            asterisk_column = c
             _from_table = c["from"][0]
             for definition in table_definitons[_from_table]:
-                table_info["COLUMNS"].append({
-                    "name": definition["name"],
-                    "type": definition["type"],
-                    "from": [_from_table]
-                })
-    if asterisk:
-        table_info["COLUMNS"] = [c for c in table_info["COLUMNS"] if c != asterisk]
+                if definition["name"] not in except_columns:
+                    table_info["COLUMNS"].append({
+                        "name": definition["name"],
+                        "type": definition["type"],
+                        "from": [_from_table]
+                    })
+    if asterisk_column:
+        table_info["COLUMNS"] = [c for c in table_info["COLUMNS"] if c != asterisk_column]
     print(table_info)
     return table_info
