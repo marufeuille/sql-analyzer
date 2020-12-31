@@ -33,13 +33,11 @@ def analyze_select(statement:sqlparse.sql.Statement):
         print(t, t.ttype)
         if t.ttype == DML:
             current_idx, t = statement.token_next(current_idx)
-            print(t, t.ttype, isinstance(t, TokenList))
-            if (isinstance(t, TokenList)):
-                if isinstance(t, Identifier):
-                    table_info["COLUMNS"].append(analyze_identifier(t))
-                elif isinstance(t, IdentifierList):
-                    for ident in t.get_identifiers():
-                        table_info["COLUMNS"].append(analyze_identifier(ident))
+            if isinstance(t, Identifier):
+                table_info["COLUMNS"].append(analyze_identifier(t))
+            elif isinstance(t, IdentifierList):
+                for ident in t.get_identifiers():
+                    table_info["COLUMNS"].append(analyze_identifier(ident))
 
         if t.ttype == Keyword and t.value.lower() == "from":
             current_idx, t = statement.token_next(current_idx)
