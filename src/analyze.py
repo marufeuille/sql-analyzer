@@ -77,21 +77,26 @@ def analyze_dml(statement:sqlparse.sql.Statement, table_definitions:dict=None):
         if t.ttype == DML: # currently, only select is OK
             current_idx, t = statement.token_next(current_idx, skip_ws=True, skip_cm=True)
             print("\t", t, t.__class__)
+            # case SELECT x FROM xxx
             if isinstance(t, Identifier):
                 print("\t\t", t, t.__class__)
                 table_info.append(analyze_identifier(t))
+            #case SELECT x,y,z,... FROM xxx
             elif isinstance(t, IdentifierList):
                 print("\t\t", t, t.__class__)
                 for ident in t.get_identifiers():
                     table_info.append(analyze_identifier(ident))
+            # case SELECT SUM(x) FROM xxx
             elif isinstance(t, Function):
                 print("\t\t", t, t.__class__)
                 table_info.append(analyze_function(t))
+            # case SELECT * FROM xxx
             elif isinstance(t, Token) and t.value == "*":
                 # * is represents as Token class instance
                 _idx, _t = statement.token_next(current_idx)
                 print("\t\t", _t, _t.__class__)
                 except_columns = []
+                # case SELECT * EXCEPT(xxx,xxx,xxx) FROM xxx
                 if isinstance(_t, Function) and _t.get_name().lower() == "except":
                     for params in _t.get_parameters():
                         except_columns.append(params.get_name())
