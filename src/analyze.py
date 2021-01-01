@@ -2,8 +2,29 @@ import sqlparse
 
 from re import sub
 from sqlparse.tokens import DML, Keyword, Punctuation
-from sqlparse.sql import Function, Identifier, IdentifierList, TokenList, Token
+from sqlparse.sql import Function, Identifier, IdentifierList, Parenthesis, TokenList, Token
 from sqlparse.tokens import Name
+
+def analyze(sql: str):
+    statement = sqlparse.parse(sql)[0]
+    _subqueries = [q for q in iter_subqueries(statement) if isinstance(q, Parenthesis)]
+    tmp_prefix = "___tmp__"
+    idx = 0
+    table_definitions = {}
+    result = {}
+    for q in _subqueries:
+        if isinstance(q.parent, Identifier):
+            name = q.parent.get_name()
+        else:
+            name = f"{tmp_prefix}{idx}"
+            idx += 1
+        r = analyze_dml(q)
+        if "subqueries" not in result:
+            result["subqueries"] = {}
+        result["subqueries"][name] = r
+        table_definitions[name] = r
+    result["main"] = analyze_dml(statement, table_definitions=table_definitions)
+    return result
 
 def iter_subqueries(token: Token):
     """https://blog.hoxo-m.com/entry/sqlparse_parse"""
@@ -51,7 +72,7 @@ def analyze_identifier(identifier: Identifier):
         return {"agg_func": real_name, "name": alias if alias else "no_name", "agg_columns": agg_columns, "from": []}
 
 
-def analyze_dml(statement:sqlparse.sql.Statement, table_definitions:dict=None):
+def analyze_dml(statement:Token, table_definitions:dict=None):
     """Analyze Select Query Statement
 
     Parameters
