@@ -1,5 +1,4 @@
-from src.analyze import analyze_dml, iter_subqueries
-import pytest
+from src.analyze import analyze_dml, analyze_function, analyze_identifier, iter_subqueries
 import sqlparse
 
 # test analyze dml
@@ -151,47 +150,6 @@ def test_brace_started_dml():
     subqueries = list(iter_subqueries(sqlparse.parse(sql)[0]))
     assert analyze_dml(subqueries[0]) == expected, "brace started dml"
 
-def test_cte():
-    sql = """
-    WITH t1 AS (
-        SELECT
-            a, b
-        FROM
-            t0
-    )
-    SELECT
-        a, b
-    FROM
-        t1
-    """
-    expected = {
-        "COLUMNS": [
-            {
-                "name": "a",
-                "from": ["t1"]
-            },
-            {
-                "name": "b",
-                "from": ["t1"]
-            },
-        ],
-        "CTE": {
-            "t1": [
-                {
-                    "name": "a",
-                    "from": ["t0"]
-                },
-                {
-                    "name": "a",
-                    "from": ["t0"]
-                },
-
-            ]
-        }
-    }
-    subqueries = list(iter_subqueries(sqlparse.parse(sql)[0]))
-    assert analyze_dml(subqueries[0], ) == expected, "simple cte"
-
 def test_agg_functions():
     sql = """
     SELECT
@@ -199,22 +157,89 @@ def test_agg_functions():
     FROM
         t0
     """
-    expected = {
-        "COLUMNS": [
+    expected = [
             {
                 "name": "no_name",
-                "type": "INTEGER",
-                "from": ["t1"],
-                "aggregator": "sum",
+                "from": ["t0"],
+                "agg_func": "SUM",
+                "agg_columns": ["x"]
+            }
+        ]
+
+    subqueries = list(iter_subqueries(sqlparse.parse(sql)[0]))
+    assert analyze_dml(subqueries[0]) == expected, "simple aggregate"
+
+    # table definitions are no effect for aggregate function output type
+    sql = """
+    SELECT
+        SUM(x)
+    FROM
+        t0
+    """
+    table_definitions = {"t0": [
+        {"name":"x", "type":"INTEGER", "mode": "NULLABLE"},
+        {"name":"y", "type":"INTEGER", "mode": "NULLABLE"},
+    ]}
+    expected = [
+            {
+                "name": "no_name",
+                "from": ["t0"],
+                "agg_func": "SUM",
+                "agg_columns": ["x"]
+            }
+        ]
+    subqueries = list(iter_subqueries(sqlparse.parse(sql)[0]))
+    assert analyze_dml(subqueries[0], table_definitions=table_definitions) == expected, "table definitions are no effect"
+
+    sql = """
+    SELECT
+        SUM(x) AS sum_x, y
+    FROM
+        t0
+    """
+    table_definitions = {"t0": [
+        {"name":"x", "type":"INTEGER", "mode": "NULLABLE"},
+        {"name":"y", "type":"INTEGER", "mode": "NULLABLE"},
+    ]}
+    expected = [
+            {
+                "name": "sum_x",
+                "from": ["t0"],
+                "agg_func": "SUM",
                 "agg_columns": ["x"]
             },
             {
                 "name": "y",
-                "type": "INTEGER",
-                "from": ["t1"]
+                "from": ["t0"],
+                "type": "INTEGER"
             }
         ]
-    }
-
     subqueries = list(iter_subqueries(sqlparse.parse(sql)[0]))
-    assert analyze_dml(subqueries[0]) == expected, "simple aggregate"
+    assert analyze_dml(subqueries[0], table_definitions=table_definitions) == expected, "with table definition column"
+
+
+def test_analyze_identifier():
+    sql = """
+        SELECT
+            SUM(x) AS sum_x
+    """
+    expected = {"agg_func": "SUM", "name": "sum_x", "agg_columns": ["x"], "from": []}
+    func = [t for t in sqlparse.parse(sql)[0].tokens if not t.is_whitespace][-1]
+    assert analyze_identifier(func) == expected
+
+    sql = """
+        SELECT
+            CONCAT(str1, str2) AS concats
+    """
+    expected = {"agg_func": "CONCAT", "name": "concats", "agg_columns": ["str1", "str2"], "from": []}
+    func = [t for t in sqlparse.parse(sql)[0].tokens if not t.is_whitespace][-1]
+    assert analyze_identifier(func) == expected
+
+def test_analyze_function():
+    sql = """
+        SELECT
+            SUM(x)
+    """
+    expected = {"agg_func": "SUM", "name": "no_name", "agg_columns": ["x"], "from": []}
+    func = [t for t in sqlparse.parse(sql)[0].tokens if not t.is_whitespace][-1]
+    assert analyze_function(func) == expected

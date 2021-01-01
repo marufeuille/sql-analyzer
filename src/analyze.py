@@ -1,8 +1,9 @@
 import sqlparse
 
 from re import sub
-from sqlparse.tokens import DML, Keyword
+from sqlparse.tokens import DML, Keyword, Punctuation
 from sqlparse.sql import Function, Identifier, IdentifierList, TokenList, Token
+from sqlparse.tokens import Name
 
 def iter_subqueries(token: Token):
     """https://blog.hoxo-m.com/entry/sqlparse_parse"""
@@ -13,6 +14,14 @@ def iter_subqueries(token: Token):
     for t in token:
         yield from iter_subqueries(t)
 
+def analyze_function(func: Function): # currently only one argument function is OK
+    name = func.get_name()
+
+    agg_columns = []
+    for ident in func.get_parameters():
+        agg_columns.append(ident.value)
+
+    return {"agg_func": name, "name": "no_name", "agg_columns": agg_columns, "from": []}
 
 def analyze_identifier(identifier: Identifier):
     """get necesarry information from Identifier Object
@@ -26,14 +35,23 @@ def analyze_identifier(identifier: Identifier):
     dict
         identifier basic information
     """
+    token = identifier.token_first(skip_cm=True, skip_ws=True)
     alias = identifier.get_alias()
     real_name = identifier.get_real_name()
-    if alias:
-        return {"name": alias, "original_name": real_name, "from": []}
-    else:
-        return {"name": real_name, "from": []}
+    if token.ttype == Name:
+        if alias:
+            return {"name": alias, "original_name": real_name, "from": []}
+        else:
+            return {"name": real_name, "from": []}
+    elif isinstance(token, Function):
+        agg_columns = []
+        for ident in token.get_parameters():
+            agg_columns.append(ident.value)
 
-def analyze_select(statement:sqlparse.sql.Statement, table_definitions:dict=None):
+        return {"agg_func": real_name, "name": alias if alias else "no_name", "agg_columns": agg_columns, "from": []}
+
+
+def analyze_dml(statement:sqlparse.sql.Statement, table_definitions:dict=None):
     """Analyze Select Query Statement
 
     Parameters
@@ -47,29 +65,37 @@ def analyze_select(statement:sqlparse.sql.Statement, table_definitions:dict=None
         analyze result
     """
 
-    current_idx = 0
     t = statement.token_first(skip_ws=True, skip_cm=True)
-    table_info = {
-        "COLUMNS": []
-    }
+    current_idx = statement.token_index(t)
+    table_info = []
     from_table = None
+    if t.ttype == Punctuation and t.ttype == "(":
+        current_idx, t = statement.token_next(current_idx, skip_ws=True, skip_cm=True)
+
     while t is not None:
+        print(t, t.__class__)
         if t.ttype == DML: # currently, only select is OK
-            current_idx, t = statement.token_next(current_idx)
-            print(t)
+            current_idx, t = statement.token_next(current_idx, skip_ws=True, skip_cm=True)
+            print("\t", t, t.__class__)
             if isinstance(t, Identifier):
-                table_info["COLUMNS"].append(analyze_identifier(t))
+                print("\t\t", t, t.__class__)
+                table_info.append(analyze_identifier(t))
             elif isinstance(t, IdentifierList):
+                print("\t\t", t, t.__class__)
                 for ident in t.get_identifiers():
-                    table_info["COLUMNS"].append(analyze_identifier(ident))
-            elif t.value == "*":
+                    table_info.append(analyze_identifier(ident))
+            elif isinstance(t, Function):
+                print("\t\t", t, t.__class__)
+                table_info.append(analyze_function(t))
+            elif isinstance(t, Token) and t.value == "*":
+                # * is represents as Token class instance
                 _idx, _t = statement.token_next(current_idx)
-                print(_t, _t.__class__)
+                print("\t\t", _t, _t.__class__)
                 except_columns = []
                 if isinstance(_t, Function) and _t.get_name().lower() == "except":
                     for params in _t.get_parameters():
                         except_columns.append(params.get_name())
-                table_info["COLUMNS"].append({"name": "*", "from": [], "except": except_columns})
+                table_info.append({"name": "*", "from": [], "except": except_columns})
 
         elif t.ttype == Keyword and t.value.lower() == "from":
             current_idx, t = statement.token_next(current_idx)
@@ -77,29 +103,29 @@ def analyze_select(statement:sqlparse.sql.Statement, table_definitions:dict=None
         current_idx, t = statement.token_next(current_idx)
 
     print(table_info)
-    for c in table_info["COLUMNS"]:
+    for c in table_info:
         c["from"].append(from_table)
         if table_definitions and from_table in table_definitions:
             key = c["name"]
             for c_def in table_definitions[from_table]:
                 print(1, c_def)
-                if c_def["name"] == key:
+                if c_def["name"] == key and "type" in c_def:
                     c["type"] = c_def["type"]
 
     asterisk_column = None
-    for c in table_info["COLUMNS"]:
+    for c in table_info:
         if c["name"] == "*":
             except_columns = c["except"]
             asterisk_column = c
             _from_table = c["from"][0]
             for definition in table_definitions[_from_table]:
                 if definition["name"] not in except_columns:
-                    table_info["COLUMNS"].append({
+                    table_info.append({
                         "name": definition["name"],
                         "type": definition["type"],
                         "from": [_from_table]
                     })
     if asterisk_column:
-        table_info["COLUMNS"] = [c for c in table_info["COLUMNS"] if c != asterisk_column]
+        table_info = [c for c in table_info if c != asterisk_column]
     print(table_info)
     return table_info
