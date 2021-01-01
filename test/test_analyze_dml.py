@@ -1,4 +1,4 @@
-from src.analyze import analyze_dml, analyze_function, analyze_identifier, iter_subqueries
+from src.analyze import analyze_dml, iter_subqueries
 import sqlparse
 
 # test analyze dml
@@ -216,30 +216,3 @@ def test_agg_functions():
         ]
     subqueries = list(iter_subqueries(sqlparse.parse(sql)[0]))
     assert analyze_dml(subqueries[0], table_definitions=table_definitions) == expected, "with table definition column"
-
-
-def test_analyze_identifier():
-    sql = """
-        SELECT
-            SUM(x) AS sum_x
-    """
-    expected = {"agg_func": "SUM", "name": "sum_x", "agg_columns": ["x"], "from": []}
-    func = [t for t in sqlparse.parse(sql)[0].tokens if not t.is_whitespace][-1]
-    assert analyze_identifier(func) == expected
-
-    sql = """
-        SELECT
-            CONCAT(str1, str2) AS concats
-    """
-    expected = {"agg_func": "CONCAT", "name": "concats", "agg_columns": ["str1", "str2"], "from": []}
-    func = [t for t in sqlparse.parse(sql)[0].tokens if not t.is_whitespace][-1]
-    assert analyze_identifier(func) == expected
-
-def test_analyze_function():
-    sql = """
-        SELECT
-            SUM(x)
-    """
-    expected = {"agg_func": "SUM", "name": "no_name", "agg_columns": ["x"], "from": []}
-    func = [t for t in sqlparse.parse(sql)[0].tokens if not t.is_whitespace][-1]
-    assert analyze_function(func) == expected
