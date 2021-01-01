@@ -12,6 +12,7 @@ def analyze(sql: str):
     idx = 0
     table_definitions = {}
     result = {}
+    sq = {}
     for q in _subqueries:
         if isinstance(q.parent, Identifier):
             name = q.parent.get_name()
@@ -23,7 +24,8 @@ def analyze(sql: str):
             result["subqueries"] = {}
         result["subqueries"][name] = r
         table_definitions[name] = r
-    result["main"] = analyze_dml(statement, table_definitions=table_definitions)
+        sq[q] = name
+    result["main"] = analyze_dml(statement, table_definitions=table_definitions, subqueries=sq)
     return result
 
 def iter_subqueries(token: Token):
@@ -72,7 +74,7 @@ def analyze_identifier(identifier: Identifier):
         return {"agg_func": real_name, "name": alias if alias else "no_name", "agg_columns": agg_columns, "from": []}
 
 
-def analyze_dml(statement:Token, table_definitions:dict=None):
+def analyze_dml(statement:Token, table_definitions:dict=None, subqueries=None):
     """Analyze Select Query Statement
 
     Parameters
@@ -125,7 +127,10 @@ def analyze_dml(statement:Token, table_definitions:dict=None):
 
         elif t.ttype == Keyword and t.value.lower() == "from":
             current_idx, t = statement.token_next(current_idx)
-            from_table = t.value
+            if subqueries is not None and t in subqueries:
+                from_table = subqueries[t]
+            else:
+                from_table = t.value
         current_idx, t = statement.token_next(current_idx)
 
     print(table_info)
