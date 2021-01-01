@@ -2,7 +2,26 @@ from src.analyze import analyze_identifier
 import sqlparse
 
 
-def test_analyze_identifier():
+def test_normal_identifier():
+    sql = """
+    SELECT
+        x
+    """
+
+    expected = {"name": "x", "from": []}
+    t = [t for t in sqlparse.parse(sql)[0].tokens if not t.is_whitespace][-1]
+    assert analyze_identifier(t) == expected
+
+    sql = """
+    SELECT
+        x AS x2
+    """
+
+    expected = {"name": "x2", "original_name": "x", "from": []}
+    t = [t for t in sqlparse.parse(sql)[0].tokens if not t.is_whitespace][-1]
+    assert analyze_identifier(t) == expected
+
+def test_analyze_function_identifier():
     sql = """
         SELECT
             SUM(x) AS sum_x
